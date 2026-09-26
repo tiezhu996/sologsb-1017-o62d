@@ -60,6 +60,10 @@ mark { padding: 0 .1em; color: #3a2414; background: #f1d486; border-radius: 2px;
 .section-label { margin-bottom: 8px !important; color: #81796e; font-size: 12px !important; font-weight: 750 !important; letter-spacing: .05em; }
 .chip-selector { display: flex; gap: 7px; flex-wrap: wrap; }
 .costume-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 22px; padding-top: 18px; border-top: 1px dashed #d7cec0; }
+.warning-group { margin-bottom: 28px; }
+.warning-group-head { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #e4ddd2; }
+.warning-group-counts { color: #81796e; font-size: 12.5px !important; }
+.warning-group-empty { padding: 12px 16px; border: 1px dashed #ddd3c5; border-radius: 10px; color: #958b80; font-size: 13px !important; }
 .warning-panel { padding: 18px; border: 1px solid #dfd3c3 !important; border-left: 4px solid #c77a22 !important; border-radius: 12px !important; }
 .warning-panel.status-accepted { border-left-color: #377760 !important; background: #f7fbf6; }
 .warning-panel.status-ignored { opacity: .7; border-left-color: #8b8277 !important; }

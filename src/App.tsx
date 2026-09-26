@@ -46,7 +46,7 @@ import {
   WarningAmber
 } from '@mui/icons-material'
 import { diffScript, useContinuityStore } from './store'
-import type { RevisionColor, Scene, WarningItem, WarningStatus } from './types'
+import type { RevisionColor, Scene, WarningStatus, WarningType } from './types'
 
 const revisionOptions: Array<{ value: RevisionColor; label: string; color: string }> = [
   { value: 'white', label: '白纸', color: '#f7f5ee' },
@@ -62,6 +62,12 @@ const revisionOptions: Array<{ value: RevisionColor; label: string; color: strin
 const dayNightOptions = ['白天', '夜', '清晨', '黄昏', '傍晚']
 const timePeriods = ['白天', '夜', '清晨', '黄昏', '傍晚']
 const searchFields = ['slug', 'synopsis', 'location', 'storyTime', 'reason'] as const
+const warningGroupMeta: Array<{ type: WarningType; label: string }> = [
+  { type: 'character', label: '角色' },
+  { type: 'prop', label: '道具' },
+  { type: 'wardrobe', label: '服装' },
+  { type: 'timeline', label: '时间线' }
+]
 
 function Highlight({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>
@@ -120,7 +126,13 @@ export default function App() {
 
   const selectedScene = state.script.scenes.find((scene) => scene.id === selectedSceneId) ?? state.script.scenes[0]
   const pendingWarnings = warnings.filter((warning) => (state.reviews[warning.id]?.status ?? 'pending') === 'pending')
-  const visibleWarnings = warnings.filter((warning) => warningFilter === 'all' || (state.reviews[warning.id]?.status ?? 'pending') === warningFilter)
+  const warningGroups = useMemo(() => warningGroupMeta.map(({ type, label }) => {
+    const items = warnings.filter((warning) => warning.type === type)
+    const counts: Record<WarningStatus, number> = { pending: 0, accepted: 0, ignored: 0 }
+    items.forEach((warning) => { counts[state.reviews[warning.id]?.status ?? 'pending'] += 1 })
+    const visible = items.filter((warning) => warningFilter === 'all' || (state.reviews[warning.id]?.status ?? 'pending') === warningFilter)
+    return { type, label, items, counts, visible }
+  }), [warnings, warningFilter, state.reviews])
   const selectedVersion = state.versions.find((version) => version.id === selectedVersionId) ?? state.versions[0]
   const diff = useMemo(() => selectedVersion ? diffScript(selectedVersion.script, state.script) : [], [selectedVersion, state.script])
   const searchResults = useMemo(() => {
@@ -341,72 +353,87 @@ export default function App() {
             <ToggleButton value="ignored">已忽略</ToggleButton>
           </ToggleButtonGroup>
         </Stack>
-        <Stack gap={1.5}>
-          {visibleWarnings.map((warning) => {
-            const review = state.reviews[warning.id] ?? { status: 'pending' as WarningStatus, replies: [] }
-            const scene = state.script.scenes.find((item) => item.id === warning.sceneId)
-            return (
-              <Paper
-                key={warning.id}
-                className={`warning-panel status-${review.status}`}
-                elevation={0}
-                onFocus={() => setSelectedSceneId(warning.sceneId)}
-                tabIndex={0}
-              >
-                <Box className="warning-panel-head">
-                  <Box className={`warning-icon ${warning.severity}`}><WarningAmber /></Box>
-                  <Box flex={1}>
-                    <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
-                      <Typography variant="h6">{warning.title}</Typography>
-                      <Chip size="small" label={`场景 ${scene?.number ?? '-'}`} onClick={() => openScene(warning.sceneId)} />
-                      <Chip size="small" variant="outlined" label={warning.type === 'character' ? '人物' : warning.type === 'prop' ? '道具' : warning.type === 'wardrobe' ? '服装' : '时间线'} />
-                    </Stack>
-                    <Typography mt={1}>{warning.detail}</Typography>
-                    <Typography variant="body2" color="text.secondary" mt={.5}>建议：{warning.suggestion}</Typography>
-                  </Box>
-                  <Chip label={review.status === 'accepted' ? '已接受' : review.status === 'ignored' ? '已忽略' : '待审'} color={review.status === 'accepted' ? 'success' : review.status === 'ignored' ? 'default' : 'warning'} />
-                </Box>
-                <Stack direction="row" gap={1} mt={1.5} flexWrap="wrap">
-                  <Button size="small" variant={review.status === 'accepted' ? 'contained' : 'outlined'} startIcon={<CheckCircle />} onClick={() => store.setReviewStatus(warning.id, 'accepted')}>接受问题</Button>
-                  <Button size="small" variant={review.status === 'ignored' ? 'contained' : 'outlined'} color="inherit" startIcon={<Block />} onClick={() => store.setReviewStatus(warning.id, 'ignored')}>忽略警告</Button>
-                  <Button size="small" onClick={() => openScene(warning.sceneId)}>打开场景</Button>
-                </Stack>
-                {review.replies.length > 0 && (
-                  <Box className="reply-list">
-                    {review.replies.map((reply) => (
-                      <Box key={reply.id} className="reply-item">
-                        <strong>{reply.author}</strong>
-                        <span>{reply.text}</span>
-                        <small>{new Date(reply.createdAt).toLocaleString('zh-CN')}</small>
+        {!warnings.length && <Alert severity="success" sx={{ mb: 2 }}>当前没有连续性问题。</Alert>}
+        {warningGroups.map((group) => (
+          <Box key={group.type} className="warning-group">
+            <Stack direction="row" alignItems="center" gap={1.2} flexWrap="wrap" className="warning-group-head">
+              <Typography variant="h6">{group.label}</Typography>
+              <Chip size="small" label={`共 ${group.items.length} 条`} color={group.counts.pending ? 'warning' : 'default'} variant={group.items.length ? 'filled' : 'outlined'} />
+              <Typography component="span" className="warning-group-counts">
+                待审 {group.counts.pending} · 已接受 {group.counts.accepted} · 已忽略 {group.counts.ignored}
+              </Typography>
+            </Stack>
+            <Stack gap={1.5}>
+              {group.visible.map((warning) => {
+                const review = state.reviews[warning.id] ?? { status: 'pending' as WarningStatus, replies: [] }
+                const scene = state.script.scenes.find((item) => item.id === warning.sceneId)
+                return (
+                  <Paper
+                    key={warning.id}
+                    className={`warning-panel status-${review.status}`}
+                    elevation={0}
+                    onFocus={() => setSelectedSceneId(warning.sceneId)}
+                    tabIndex={0}
+                  >
+                    <Box className="warning-panel-head">
+                      <Box className={`warning-icon ${warning.severity}`}><WarningAmber /></Box>
+                      <Box flex={1}>
+                        <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
+                          <Typography variant="h6">{warning.title}</Typography>
+                          <Chip size="small" label={`场景 ${scene?.number ?? '-'}`} onClick={() => openScene(warning.sceneId)} />
+                        </Stack>
+                        <Typography mt={1}>{warning.detail}</Typography>
+                        <Typography variant="body2" color="text.secondary" mt={.5}>建议：{warning.suggestion}</Typography>
                       </Box>
-                    ))}
-                  </Box>
-                )}
-                <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} mt={1.5}>
-                  <TextField
-                    fullWidth
-                    multiline
-                    maxRows={3}
-                    placeholder="作者回复：说明修改理由或保留原设定"
-                    value={replyDrafts[warning.id] ?? ''}
-                    onChange={(event) => setReplyDrafts((previous) => ({ ...previous, [warning.id]: event.target.value }))}
-                    onKeyDown={(event) => {
-                      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                      <Chip label={review.status === 'accepted' ? '已接受' : review.status === 'ignored' ? '已忽略' : '待审'} color={review.status === 'accepted' ? 'success' : review.status === 'ignored' ? 'default' : 'warning'} />
+                    </Box>
+                    <Stack direction="row" gap={1} mt={1.5} flexWrap="wrap">
+                      <Button size="small" variant={review.status === 'accepted' ? 'contained' : 'outlined'} startIcon={<CheckCircle />} onClick={() => store.setReviewStatus(warning.id, 'accepted')}>接受问题</Button>
+                      <Button size="small" variant={review.status === 'ignored' ? 'contained' : 'outlined'} color="inherit" startIcon={<Block />} onClick={() => store.setReviewStatus(warning.id, 'ignored')}>忽略警告</Button>
+                      <Button size="small" onClick={() => openScene(warning.sceneId)}>打开场景</Button>
+                    </Stack>
+                    {review.replies.length > 0 && (
+                      <Box className="reply-list">
+                        {review.replies.map((reply) => (
+                          <Box key={reply.id} className="reply-item">
+                            <strong>{reply.author}</strong>
+                            <span>{reply.text}</span>
+                            <small>{new Date(reply.createdAt).toLocaleString('zh-CN')}</small>
+                          </Box>
+                        ))}
+                      </Box>
+                    )}
+                    <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} mt={1.5}>
+                      <TextField
+                        fullWidth
+                        multiline
+                        maxRows={3}
+                        placeholder="作者回复：说明修改理由或保留原设定"
+                        value={replyDrafts[warning.id] ?? ''}
+                        onChange={(event) => setReplyDrafts((previous) => ({ ...previous, [warning.id]: event.target.value }))}
+                        onKeyDown={(event) => {
+                          if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                            store.addReply(warning.id, state.script.writer, replyDrafts[warning.id] ?? '')
+                            setReplyDrafts((previous) => ({ ...previous, [warning.id]: '' }))
+                          }
+                        }}
+                      />
+                      <Button startIcon={<Reply />} variant="outlined" onClick={() => {
                         store.addReply(warning.id, state.script.writer, replyDrafts[warning.id] ?? '')
                         setReplyDrafts((previous) => ({ ...previous, [warning.id]: '' }))
-                      }
-                    }}
-                  />
-                  <Button startIcon={<Reply />} variant="outlined" onClick={() => {
-                    store.addReply(warning.id, state.script.writer, replyDrafts[warning.id] ?? '')
-                    setReplyDrafts((previous) => ({ ...previous, [warning.id]: '' }))
-                  }}>回复</Button>
-                </Stack>
-              </Paper>
-            )
-          })}
-          {!visibleWarnings.length && <Alert severity="success">当前筛选下没有连续性问题。</Alert>}
-        </Stack>
+                      }}>回复</Button>
+                    </Stack>
+                  </Paper>
+                )
+              })}
+              {!group.visible.length && (
+                <Typography className="warning-group-empty">
+                  {group.items.length ? '当前筛选下本类没有条目。' : '本类暂无连续性问题。'}
+                </Typography>
+              )}
+            </Stack>
+          </Box>
+        ))}
       </Box>
     )
   }
