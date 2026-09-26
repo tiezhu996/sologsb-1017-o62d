@@ -59,6 +59,18 @@ export function deriveWarnings(script: Script): WarningItem[] {
           suggestion: '调整首次建立场景，或在当前场景加入来源、交接动作与持有人反应。'
         })
       }
+      const owner = script.characters.find((item) => item.id === prop.ownerId)
+      if (owner && !scene.characterIds.includes(owner.id)) {
+        warnings.push({
+          id: `prop-owner-${scene.id}-${propId}`,
+          type: 'prop',
+          severity: 'error',
+          sceneId: scene.id,
+          title: `${prop.name}交接不成立`,
+          detail: `道具在场景 ${scene.number} 出现，但登记持有人“${owner.name}”本场并未到场，交接无法完成。`,
+          suggestion: `在本场安排${owner.name}出场完成交接，或把持有人改挂给本场到场的角色。`
+        })
+      }
       propsSeen.add(propId)
     })
 
@@ -66,6 +78,18 @@ export function deriveWarnings(script: Script): WarningItem[] {
       const wardrobe = script.wardrobes.find((item) => item.id === wardrobeId)
       const character = script.characters.find((item) => item.id === characterId)
       if (!wardrobe || !character) return
+      const wardrobeOwner = script.characters.find((item) => item.id === wardrobe.characterId)
+      if (wardrobeOwner && wardrobeOwner.id !== character.id) {
+        warnings.push({
+          id: `wardrobe-owner-${scene.id}-${characterId}-${wardrobeId}`,
+          type: 'wardrobe',
+          severity: 'error',
+          sceneId: scene.id,
+          title: `“${wardrobe.name}”挂在别人名下`,
+          detail: `场景 ${scene.number} 由${character.name}穿着该服装，但资料库里它登记在${wardrobeOwner.name}名下。`,
+          suggestion: `把服装改挂到${character.name}名下，或让本场改穿登记在${character.name}名下的服装。`
+        })
+      }
       if (!wardrobe.timePeriods.includes(scene.dayNight)) {
         warnings.push({
           id: `wardrobe-${scene.id}-${characterId}-${wardrobeId}`,
@@ -96,6 +120,26 @@ export function deriveWarnings(script: Script): WarningItem[] {
       }
     }
   })
+
+  script.characters.forEach((character) => {
+    const introIndex = sceneIndex(character.introducedSceneId)
+    if (introIndex < 0) return
+    const introScene = script.scenes[introIndex]
+    if (!introScene.characterIds.includes(character.id)) {
+      warnings.push({
+        id: `character-intro-${character.id}`,
+        type: 'character',
+        severity: 'error',
+        sceneId: introScene.id,
+        title: `${character.name}的首次建立场景未勾选本人`,
+        detail: `资料库把场景 ${introScene.number} 标为${character.name}的首次建立场景，但该场出场名单里没有这个角色。`,
+        suggestion: `在场景 ${introScene.number} 勾选${character.name}，或把“首次建立”改到角色真正到场的场次。`
+      })
+    }
+  })
+
+  const typeOrder: Record<WarningItem['type'], number> = { character: 0, prop: 1, wardrobe: 2, timeline: 3 }
+  warnings.sort((a, b) => (sceneIndex(a.sceneId) - sceneIndex(b.sceneId)) || typeOrder[a.type] - typeOrder[b.type])
   return warnings
 }
 
